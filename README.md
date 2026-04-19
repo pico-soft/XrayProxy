@@ -57,7 +57,7 @@ bash ~/xproxy.sh stop
 |-----------|--------------|
 | **Telegram** | Настройки → Данные → Прокси → SOCKS5 → `127.0.0.1:10828` |
 | **Firefox**  **Fennec** Зайди в about:config в Firefox/Fennec и выставь такие настройки: `network.proxy.http`: `127.0.0.1` `network.proxy.http_port`: `10829` `network.proxy.socks`: `127.0.0.1` `network.proxy.socks_port`: `10828` `network.proxy.type`: `1` `network.proxy.socks_remote_dns`: `true` | Установи FoxyProxy → SOCKS5 → `127.0.0.1:10828` + Proxy DNS |
-| **WhatsApp, Instagram, ChatGPT** | Через Firefox: `web.whatsapp.com`, `instagram.com`, `chatgpt.com` | Рекомендую сделать из них PWA-приложения
+| **WhatsApp, Instagram, ChatGPT** | Через Firefox: `web.whatsapp.com`, `instagram.com`, `chatgpt.com` Рекомендую сделать из них PWA-приложения
 
 Российские приложения (банки, СДЭК, Яндекс) работают напрямую — они не видят прокси.
 
