@@ -3,7 +3,7 @@
 **SOCKS5/HTTP прокси без VPN-интерфейса для Android**
 
 [![Version](https://img.shields.io/badge/version-1.0--beta-blue)]()
-[![License](https://img.shields.io/badge/license-GPL)]()
+![License: GPL v3](https://img.shields.io/badge/License-GPL%20v3-blue.svg)
 [![Platform](https://img.shields.io/badge/platform-Android%20(Termux)-brightgreen)]()
 
 XrayProxy запускает [xray-core](https://github.com/XTLS/Xray-core) как локальный SOCKS5/HTTP-прокси в Termux. В отличие от VPN-клиентов, он **не создаёт VPN-интерфейс** (tun0) и **невидим** для приложений, которые проверяют наличие VPN через `ConnectivityManager.TRANSPORT_VPN`.
