@@ -41,7 +41,7 @@ termux-setup-storage
 ```bash
 cd ~
 rm -rf ~/xrayproxy ~/xrayproxy.zip
-curl -fL --progress-bar https://github.com/pico-soft/XrayProxy/releases/latest/download/xrayproxy.zip -o xrayproxy.zip
+curl -fL --progress-bar --resolve github.com:443:140.82.121.3 -o xrayproxy.zip https://github.com/pico-soft/XrayProxy/releases/latest/download/xrayproxy.zip
 unzip -o xrayproxy.zip
 bash xrayproxy/install.sh
 ```
@@ -55,7 +55,7 @@ bash xrayproxy/install.sh
 ```bash
 cd ~
 rm -rf ~/xrayproxy ~/xrayproxy.zip
-curl -fL --progress-bar https://github.com/pico-soft/XrayProxy/releases/download/v2.12/xrayproxy.zip -o xrayproxy.zip
+curl -fL --progress-bar --resolve github.com:443:140.82.121.3 -o xrayproxy.zip https://github.com/pico-soft/XrayProxy/releases/download/v2.12/xrayproxy.zip
 unzip -o xrayproxy.zip
 bash xrayproxy/install.sh
 ```
@@ -224,7 +224,7 @@ pip install flask -i https://pypi.tuna.tsinghua.edu.cn/simple --trusted-host pyp
 apt update && apt full-upgrade -y
 cd ~
 rm -rf ~/xrayproxy ~/xrayproxy.zip
-curl -fL --progress-bar https://github.com/pico-soft/XrayProxy/releases/latest/download/xrayproxy.zip -o xrayproxy.zip
+curl -fL --progress-bar --resolve github.com:443:140.82.121.3 -o xrayproxy.zip https://github.com/pico-soft/XrayProxy/releases/latest/download/xrayproxy.zip
 unzip -o xrayproxy.zip
 bash xrayproxy/install.sh
 ```
@@ -236,7 +236,7 @@ bash xrayproxy/install.sh
 ```bash
 cd ~
 rm -rf ~/xrayproxy ~/xrayproxy.zip
-curl -fL --progress-bar https://github.com/pico-soft/XrayProxy/releases/download/v2.12/xrayproxy.zip -o xrayproxy.zip
+curl -fL --progress-bar --resolve github.com:443:140.82.121.3 -o xrayproxy.zip https://github.com/pico-soft/XrayProxy/releases/download/v2.12/xrayproxy.zip
 unzip -o xrayproxy.zip
 bash xrayproxy/install.sh
 ```
