@@ -241,6 +241,14 @@ unzip -o xrayproxy.zip
 bash xrayproxy/install.sh
 ```
 
+### Установка через браузер (если curl не работает)
+
+Скачай xrayproxy.zip через браузер
+Открой Termux и выполни:
+
+```apt update && apt full-upgrade -y && pkg install -y unzip python && termux-setup-storage && sleep 2 && f=$(ls -t ~/storage/downloads/xrayproxy*.zip 2>/dev/null | head -1) && if [ -n "$f" ]; then cd ~ && rm -rf ~/xrayproxy && unzip -o "$f" && bash xrayproxy/install.sh; else echo "xrayproxy.zip не найден в Downloads"; fi
+```
+
 ## Лицензия
 
 GPL v3
