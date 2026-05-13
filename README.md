@@ -247,7 +247,7 @@ bash xrayproxy/install.sh
 Открой Termux и выполни:
 
 ```bash
-apt update && apt full-upgrade -y && pkg install -y unzip python && termux-setup-storage && sleep 2 && f=$(ls -t ~/storage/downloads/xrayproxy*.zip 2>/dev/null | head -1) && if [ -n "$f" ]; then cd ~ && rm -rf ~/xrayproxy && unzip -o "$f" && bash xrayproxy/install.sh; else echo "xrayproxy.zip не найден в Downloads"; fi
+apt update && apt full-upgrade -y && pkg install -y unzip python && termux-setup-storage && sleep 2 && f=$(find ~/storage/downloads ~/storage/shared/Download -name "xrayproxy*.zip" -type f 2>/dev/null | head -1) && if [ -n "$f" ]; then cd ~ && rm -rf ~/xrayproxy && unzip -o "$f" && bash xrayproxy/install.sh; else echo "xrayproxy.zip не найден в Downloads"; fi
 ```
 
 ## Лицензия
