@@ -241,13 +241,13 @@ unzip -o xrayproxy.zip
 bash xrayproxy/install.sh
 ```
 
-### Установка через браузер (если curl не работает)
+### Установка через браузер или получением файла, например, через Telegram (если curl не работает)
 
-Скачай xrayproxy.zip через браузер
+Скачай xrayproxy.zip через браузер или получи через мессенджер
 Открой Termux и выполни:
 
 ```bash
-apt update && apt full-upgrade -y && pkg install -y unzip python && termux-setup-storage && sleep 2 && f=$(find ~/storage/downloads ~/storage/shared/Download -name "xrayproxy*.zip" -type f 2>/dev/null | head -1) && if [ -n "$f" ]; then cd ~ && rm -rf ~/xrayproxy && unzip -o "$f" && bash xrayproxy/install.sh; else echo "xrayproxy.zip не найден в Downloads"; fi
+apt update && apt full-upgrade -y && pkg install -y unzip python && termux-setup-storage && sleep 2 && f=$(find ~/storage/downloads ~/storage/shared/Download -name "xrayproxy*.zip" -type f -printf '%T@ %p\n' 2>/dev/null | sort -rn | head -1 | cut -d' ' -f2-) && if [ -n "$f" ]; then echo "Найден: $f" && cd ~ && rm -rf ~/xrayproxy && unzip -o "$f" && bash xrayproxy/install.sh; else echo "xrayproxy.zip не найден в Downloads"; fi
 ```
 
 ## Лицензия
