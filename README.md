@@ -29,22 +29,17 @@ XrayProxy запускает [xray-core](https://github.com/XTLS/Xray-core) ка
 #### Быстрая установка (latest)
 
 Устанавливает **последнюю доступную версию** из GitHub Releases.
+Если GitHub доступен (curl работает), в Termux::
 
 ```bash
-apt update && apt full-upgrade -y
-pkg install -y curl unzip
-termux-setup-storage
-```
+apt update && apt full-upgrade -y && pkg install -y curl unzip && termux-setup-storage && sleep 3 && cd ~ && rm -rf ~/xrayproxy ~/xrayproxy.zip && curl -fL --progress-bar --max-time 60 -o xrayproxy.zip https://github.com/pico-soft/XrayProxy/releases/latest/download/xrayproxy.zip && unzip -o xrayproxy.zip && bash xrayproxy/install.sh```
 
-> Появится диалог — нажми «Разрешить».
+Если GitHub заблокирован (curl зависает):
+
+Скачай последнюю версию xrayproxy.zip через браузер или получи файл от того, кто может его скачать  через Telegram
 
 ```bash
-cd ~
-rm -rf ~/xrayproxy ~/xrayproxy.zip
-curl -fL --progress-bar --resolve github.com:443:140.82.121.3 -o xrayproxy.zip https://github.com/pico-soft/XrayProxy/releases/latest/download/xrayproxy.zip
-unzip -o xrayproxy.zip
-bash xrayproxy/install.sh
-```
+apt update && apt full-upgrade -y && pkg install -y unzip && termux-setup-storage && sleep 3 && f=$(find ~/storage/downloads ~/storage/shared/Download -maxdepth 3 -name "xrayproxy*.zip" -type f -exec stat -c '%Y %n' {} \; 2>/dev/null | sort -rn | head -1 | cut -d' ' -f2-) && if [ -n "$f" ]; then echo "Найден: $f" && cd ~ && rm -rf ~/xrayproxy && unzip -o "$f" && bash xrayproxy/install.sh; else echo "xrayproxy.zip не найден в Downloads"; fi```
 
 Установщик автоматически поставит Python, Flask, скачает xray-core, настроит автозапуск и запустит веб-интерфейс.
 
