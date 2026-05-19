@@ -24,6 +24,15 @@ XrayProxy запускает [xray-core](https://github.com/XTLS/Xray-core) ка
 
 Скачай из [F-Droid](https://f-droid.org/packages/com.termux/) (не из Google Play — там устаревшая версия).
 
+### 1.1. Рекомендуемый браузер
+
+Для полноценной работы с XrayProxy лучше использовать **Fennec из F-Droid** или **Firefox Nightly**.
+
+- **Fennec** — рекомендуемый вариант: стабильнее работает с настройками прокси через `about:config`.
+- **Firefox Nightly** тоже подходит, но на некоторых версиях Android может работать нестабильно.
+- Панель управления `http://localhost:8080` можно открывать как в браузере, настроенном на работу через прокси, так и в любом другом браузере на устройстве.
+
+
 ### 2. Установи XrayProxy
 
 #### Быстрая установка (latest)
@@ -74,7 +83,7 @@ bash ~/xrayproxy/install.sh
 # Терминальный интерфейс
 bash ~/xproxy.sh
 
-# Веб-интерфейс (открой http://localhost:8080 в Firefox)
+# Веб-интерфейс (открой http://localhost:8080 в Fennec, Firefox Nightly или любом браузере)
 bash ~/xproxy.sh web
 
 # Остановить прокси
@@ -94,8 +103,8 @@ bash ~/xproxy.sh stop
 | Приложение | Как настроить |
 |-----------|--------------|
 | **Telegram** | Настройки → Данные → Прокси → SOCKS5 → `127.0.0.1:10828` |
-| **Firefox / Fennec** | Зайди в `about:config` и выставь: `network.proxy.http = 127.0.0.1`, `network.proxy.http_port = 10829`, `network.proxy.socks = 127.0.0.1`, `network.proxy.socks_port = 10828`, `network.proxy.type = 1`, `network.proxy.socks_remote_dns = true` |
-| **WhatsApp, Instagram, ChatGPT** | Через Firefox: `web.whatsapp.com`, `instagram.com`, `chatgpt.com`. Рекомендую сделать из них PWA-приложения |
+| **Fennec / Firefox nightly** | Зайди в `about:config` и выставь: `network.proxy.http = 127.0.0.1`, `network.proxy.http_port = 10829`, `network.proxy.socks = 127.0.0.1`, `network.proxy.socks_port = 10828`, `network.proxy.type = 1`, `network.proxy.socks_remote_dns = true` |
+| **WhatsApp, Instagram, ChatGPT** | Через Fennec: `web.whatsapp.com`, `instagram.com`, `chatgpt.com`. Рекомендую сделать из них PWA-приложения |
 
 Российские приложения (банки, СДЭК, Яндекс) работают напрямую — они не видят прокси.
 
@@ -131,7 +140,7 @@ cat ~/.termux/boot/xrayproxy
 
 ### 4. Перезагрузи телефон
 
-Подожди 20–30 секунд после загрузки, затем открой Firefox → `http://localhost:8080`.
+Подожди 20–30 секунд после загрузки, затем открой Fennec, Firefox Nightly или любой другой браузер → `http://localhost:8080`.
 
 Проверить, что автозапуск сработал:
 
