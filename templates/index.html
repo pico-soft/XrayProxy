@@ -1,0 +1,311 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>{{ app_name }} v.{{ version }}</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:#1a1a2e;color:#e0e0e0;font-family:-apple-system,sans-serif;font-size:14px;padding:8px}
+a{color:#64b5f6;text-decoration:none}
+h2{font-size:15px;color:#82b1ff;margin:14px 0 6px;border-bottom:1px solid #333;padding-bottom:4px}
+.hdr{background:#16213e;padding:12px;border-radius:8px;margin-bottom:10px}
+.hdr h1{font-size:18px;color:#82b1ff}
+.hdr .sub{color:#ffc107;font-size:13px;margin-top:2px}
+.hdr .times{color:#777;font-size:11px;margin-top:2px}
+.st{padding:8px 12px;border-radius:6px;margin-bottom:10px}
+.st.on{background:#1b5e20;color:#a5d6a7}
+.st.off{background:#b71c1c33;color:#ef9a9a}
+.ip{font-weight:bold;color:#69f0ae}
+.acts{display:flex;flex-wrap:wrap;gap:5px;margin-bottom:10px}
+.btn{display:inline-block;padding:7px 12px;border-radius:6px;font-size:13px;border:none;cursor:pointer;color:#fff}
+.bg{background:#2e7d32}.bg:hover{background:#388e3c}
+.bb{background:#1565c0}.bb:hover{background:#1976d2}
+.bo{background:#e65100}.bo:hover{background:#ef6c00}
+.br{background:#c62828}.br:hover{background:#d32f2f}
+.bgr{background:#424242}.bgr:hover{background:#555}
+.bs{padding:4px 8px;font-size:12px}
+table{width:100%;border-collapse:collapse;font-size:12px}
+th{background:#16213e;color:#82b1ff;padding:5px 3px;text-align:left;position:sticky;top:0}
+td{padding:4px 3px;border-bottom:1px solid #2a2a3e}
+tr:hover{background:#16213e44}
+tr.active{background:#1b5e2044}
+.g{color:#69f0ae}.r{color:#ef5350}.m{color:#777}
+.sn{max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+input[type=text],input[type=number],input[type=url]{background:#0d1117;border:1px solid #333;color:#e0e0e0;padding:5px 7px;border-radius:4px;width:100%;font-size:13px}
+.fr{display:flex;gap:5px;margin:5px 0;align-items:center}
+.fr input{flex:1}
+.sec{background:#16213e;border-radius:8px;padding:8px;margin-bottom:8px}
+.bl{display:inline-block;background:#333;padding:2px 7px;border-radius:12px;margin:2px;font-size:12px}
+.bl a{color:#ef5350;margin-left:3px}
+details{margin-bottom:6px}
+summary{cursor:pointer;color:#82b1ff;font-size:14px;padding:5px 0}
+.mon-log{background:#0d1117;border-radius:4px;padding:6px;font-family:monospace;font-size:11px;max-height:150px;overflow-y:auto;margin-top:6px}
+.mon-log div{padding:1px 0}
+</style>
+</head>
+<body>
+
+<div class="hdr">
+ <h1>{{ app_name }} v.{{ version }}</h1>
+ <div class="sub">📡 {{ active_name }}{% if subs|length > 1 %} — <a href="#subs">сменить</a>{% endif %}</div>
+ <div class="times" id="hdr-times">
+  {% if last_test %}Тест: <span id="hdr-test">{{ last_test }}</span>{% endif %}
+  {% if last_update %}{% if last_test %} | {% endif %}Обн: <span id="hdr-update">{{ last_update }}</span>{% endif %}
+ </div>
+</div>
+
+{% if is_running %}
+<div class="st on" id="status-box">
+ <span id="st-name">● {{ current.NAME if current else 'Работает' }}</span>
+ {% if current and current.SPEED_MBPS is defined and current.SPEED_MBPS > 0 %}
+  <span id="st-speed" style="font-size:12px;color:#a5d6a7"> ({{ "%.1f"|format(current.SPEED_MBPS) }} Мб/с)</span>
+ {% else %}
+  <span id="st-speed" style="font-size:12px;color:#a5d6a7"></span>
+ {% endif %}
+ <br>IP: <span class="ip" id="st-ip">{{ external_ip or '...' }}</span>
+ <br><small>SOCKS5 :{{ socks_port }} / HTTP :{{ http_port }}</small>
+ <span id="st-monitor">{% if monitor_running %}<br><small class="g">↻ Мониторинг активен</small>{% endif %}</span>
+</div>
+{% else %}
+<div class="st off" id="status-box">○ Не запущен</div>
+{% endif %}
+
+<div class="acts">
+ <a href="/auto_connect" class="btn bg">⚡ Авто</a>
+ <a href="#" onclick="checkSpeed()" class="btn bb">⏱ Тест сервера</a>
+ <a href="/next_server" class="btn bgr">→ След</a>
+ {% if is_running %}<a href="/stop" class="btn br">■ Стоп</a>{% else %}<a href="/start" class="btn bg">▶ Старт</a>{% endif %}
+ <a href="/update_subs" class="btn bgr">↻ Подписки</a>
+ <a href="/run_tests" class="btn bo">🔍 Полный тест</a>
+ <a href="#" onclick="refreshAlive()" class="btn bgr">🔄</a>
+</div>
+
+{% if task.running %}
+<div class="sec" style="border:1px solid #ffc107">
+ <b style="color:#ffc107">⏳ {{ task.type }}...</b>
+ <a href="/task" class="btn bs bgr" style="float:right">→</a>
+</div>
+{% endif %}
+
+<h2>Живые серверы ({{ alive_servers|length }})</h2>
+<div id="alive-table">
+{% if alive_servers %}
+<div style="overflow-x:auto">
+<table>
+<tr><th>#</th><th>Сервер</th><th>Пинг</th><th>Мб/с</th><th>Пров.</th><th></th></tr>
+{% for s in alive_servers %}
+<tr{% if current and s.HOST==current.HOST and s.PORT|string==current.PORT|string %} class="active"{% endif %}>
+ <td>{{ loop.index }}</td>
+ <td class="sn" title="{{ s.HOST }}">{{ s.NAME[:30] }}</td>
+ <td><span class="g">{{ s.PING_MS }}</span></td>
+ <td><span class="g">{{ "%.1f"|format(s.SPEED_MBPS) }}</span></td>
+ <td class="m" style="font-size:11px">{{ s.LAST_TESTED or '—' }}</td>
+ <td><a href="/connect/{{ loop.index0 }}" class="btn bs bb">▶</a></td>
+</tr>
+{% endfor %}
+</table>
+</div>
+{% else %}
+<p class="m" style="padding:6px">Запусти тест (🔍)</p>
+{% endif %}
+</div>
+
+<details>
+<summary>Все серверы ({{ servers|length }})</summary>
+<div style="overflow-x:auto">
+<table>
+<tr><th>#</th><th>Сервер</th><th>Пинг</th><th>Мб/с</th><th></th></tr>
+{% for s in servers %}
+<tr>
+ <td>{{ loop.index }}</td>
+ <td class="sn">{{ s.NAME[:30] }}</td>
+ <td>{% if s.PING_MS>0 %}<span class="g">{{ s.PING_MS }}</span>{% else %}<span class="m">—</span>{% endif %}</td>
+ <td>{% if s.SPEED_MBPS>0 %}<span class="g">{{ "%.1f"|format(s.SPEED_MBPS) }}</span>{% elif s.SPEED_MBPS==0 %}<span class="r">✗</span>{% else %}<span class="m">—</span>{% endif %}</td>
+ <td><a href="/connect/{{ loop.index0 }}" class="btn bs bb">▶</a></td>
+</tr>
+{% endfor %}
+</table>
+</div>
+</details>
+
+<h2 id="subs">Подписки</h2>
+<div class="sec">
+{% for s in subs %}
+<div style="display:flex;justify-content:space-between;align-items:center;padding:3px 0;border-bottom:1px solid #2a2a3e">
+ <div>{% if s.url==active_url %}<b style="color:#ffc107">●</b>{% endif %} <a href="/set_active_sub/{{ loop.index0 }}">{{ s.name }}</a></div>
+ <a href="/del_sub/{{ loop.index0 }}" class="btn bs br" onclick="return confirm('Удалить?')">✗</a>
+</div>
+{% endfor %}
+{% if subs|length>1 %}<div style="padding:3px 0"><a href="/set_active_sub/-1" class="btn bs bgr">Все</a></div>{% endif %}
+<div class="fr" style="margin-top:6px">
+ <form method="POST" action="/add_sub" style="display:flex;gap:4px;width:100%">
+  <input type="url" name="url" placeholder="URL подписки" required>
+  <input type="text" name="name" placeholder="Имя" style="width:80px">
+  <button class="btn bs bg">+</button>
+ </form>
+</div>
+<div class="fr">
+ <form method="POST" action="/add_servers_batch" style="width:100%">
+  <textarea name="uris" rows="3" placeholder="vless:// или trojan:// ссылки (по одной на строку)" style="background:#0d1117;border:1px solid #333;color:#e0e0e0;padding:5px 7px;border-radius:4px;width:100%;font-size:12px;font-family:monospace;resize:vertical"></textarea>
+  <div style="display:flex;gap:4px;margin-top:4px">
+   <button class="btn bs bo" style="flex:1">+🔗 Добавить серверы</button>
+  </div>
+ </form>
+</div>
+<div class="fr">
+ <form method="POST" action="/import_file" enctype="multipart/form-data" style="display:flex;gap:4px;width:100%;align-items:center">
+  <input type="file" name="file" accept=".txt,.text" style="font-size:12px;color:#999;flex:1">
+  <button class="btn bs bgr">📄 Из файла</button>
+ </form>
+</div>
+</div>
+
+<!-- Мониторинг -->
+<details {% if monitor_running %}open{% endif %}>
+<summary>🛡️ Автомониторинг</summary>
+<div class="sec">
+ <div style="margin-bottom:6px">
+  Автосоединение:
+  {% if auto_monitor %}<span class="g">вкл</span> <a href="/toggle_auto_monitor" class="btn bs br">Выкл</a>
+  {% else %}<span class="m">выкл</span> <a href="/toggle_auto_monitor" class="btn bs bg">Вкл</a>{% endif %}
+ </div>
+ <div style="margin-bottom:6px">
+  Статус:
+  {% if monitor_running %}<span class="g">активен</span> <a href="/toggle_monitor" class="btn bs br">Стоп</a>
+  {% else %}<span class="m">остановлен</span> <a href="/toggle_monitor" class="btn bs bg">Старт</a>{% endif %}
+ </div>
+ <div class="fr">
+  <form method="POST" action="/set_monitor_interval" style="display:flex;gap:4px;align-items:center">
+   <label style="white-space:nowrap">Интервал:</label>
+   <input type="number" name="interval" value="{{ monitor_interval }}" min="60" max="3600" style="width:70px">с
+   <button class="btn bs bgr">OK</button>
+  </form>
+ </div>
+ <div class="fr">
+  <form method="POST" action="/set_direct_threshold" style="display:flex;gap:4px;align-items:center">
+   <label style="white-space:nowrap">Прямая мин.:</label>
+   <input type="number" name="speed" value="{{ direct_threshold }}" min="0.1" max="100" step="0.1" style="width:60px">Мб/с
+   <button class="btn bs bgr">OK</button>
+  </form>
+ </div>
+ <div class="fr">
+  <form method="POST" action="/set_tunnel_threshold" style="display:flex;gap:4px;align-items:center">
+   <label style="white-space:nowrap">Туннель мин.:</label>
+   <input type="number" name="speed" value="{{ tunnel_threshold }}" min="0.1" max="100" step="0.1" style="width:60px">Мб/с
+   <button class="btn bs bgr">OK</button>
+  </form>
+ </div>
+ {% if monitor_log %}
+ <div class="mon-log" id="mon-log">
+  {% for l in monitor_log %}
+  <div{% if '✓' in l %} class="g"{% elif '⚠' in l or 'ниже' in l %} style="color:#ffc107"{% endif %}>{{ l }}</div>
+  {% endfor %}
+ </div>
+ {% endif %}
+</div>
+</details>
+
+<!-- Настройки -->
+<details>
+<summary>⚙️ Настройки</summary>
+<div class="sec">
+<div class="fr">
+ <form method="POST" action="/set_timeout" style="display:flex;gap:4px;align-items:center">
+  <label style="white-space:nowrap">Таймаут прокси:</label>
+  <input type="number" name="timeout" value="{{ timeout }}" min="1" max="30" style="width:50px">с
+  <button class="btn bs bgr">OK</button>
+ </form>
+</div>
+<div style="margin-top:6px">Фон. проверка (1ч): {% if bg_running %}<span class="g">вкл</span> <a href="/toggle_bg" class="btn bs br">Выкл</a>{% else %}<span class="m">выкл</span> <a href="/toggle_bg" class="btn bs bg">Вкл</a>{% endif %}</div>
+<div style="margin-top:6px"><a href="#" onclick="exportLogs(event)" class="btn bs bgr">📋 Логи</a> <span id="exp-r" class="m" style="font-size:12px"></span></div>
+<div style="margin-top:6px"><a href="/run_update" class="btn bs bb" onclick="return confirm('Обновить XrayProxy?')">⬆ Обновить</a></div>
+</div>
+</details>
+
+<details>
+<summary>🚫 Стоп-лист</summary>
+<div class="sec">
+<div style="margin-bottom:4px">{% for w in blacklist %}<span class="bl">{{ w }} <a href="/del_blacklist/{{ loop.index0 }}">✗</a></span>{% endfor %}</div>
+<div class="fr"><form method="POST" action="/add_blacklist" style="display:flex;gap:4px;width:100%">
+ <input type="text" name="word" placeholder="Слово"><button class="btn bs bg">+</button>
+</form></div>
+</div>
+</details>
+
+<div class="m" style="text-align:center;padding:12px;font-size:11px">
+ <a href="https://github.com/pico-soft/XrayProxy">pico-soft/XrayProxy</a>
+</div>
+
+<script>
+function checkSpeed(){
+ window.location.href='/speed_and_switch';
+}
+function exportLogs(ev){
+ ev.preventDefault();const e=document.getElementById('exp-r');e.textContent='...';
+ fetch('/export_logs').then(r=>r.json()).then(d=>{e.textContent=d.ok?'✓ '+d.path:'Ошибка'});
+}
+function refreshAlive(){
+ fetch('/refresh_alive').then(r=>r.json()).then(data=>{
+  if(!data.length)return;
+  let h='<div style="overflow-x:auto"><table><tr><th>#</th><th>Сервер</th><th>Пинг</th><th>Мб/с</th><th>Пров.</th></tr>';
+  data.forEach((s,i)=>{
+   h+=`<tr><td>${i+1}</td><td class="sn">${(s.name||'').substring(0,30)}</td>`;
+   h+=`<td><span class="g">${s.ping}</span></td><td><span class="g">${s.speed.toFixed(1)}</span></td>`;
+   h+=`<td class="m" style="font-size:11px">${s.tested||'—'}</td></tr>`;
+  });
+  h+='</table></div>';
+  document.getElementById('alive-table').innerHTML=h;
+ });
+}
+{% if task.running %}setTimeout(()=>location.reload(),5000);{% endif %}
+
+// Автообновление статуса каждые 15 секунд
+setInterval(()=>{
+ fetch('/status').then(r=>r.json()).then(d=>{
+  // Обновляем шапку времени
+  const times=document.getElementById('hdr-times');
+  if(times){
+   let t='';
+   if(d.last_test) t+='Тест: '+d.last_test;
+   if(d.last_update) t+=(t?' | ':'')+'Обн: '+d.last_update;
+   times.innerHTML=t;
+  }
+  // Обновляем статус-бокс
+  const box=document.getElementById('status-box');
+  if(!box) return;
+  if(d.running){
+   box.className='st on';
+   const name=document.getElementById('st-name');
+   const ip=document.getElementById('st-ip');
+   const speed=document.getElementById('st-speed');
+   const mon=document.getElementById('st-monitor');
+   if(name) name.textContent='● '+(d.server_name||'Работает');
+   if(ip) ip.textContent=d.external_ip||'...';
+   if(speed && d.server_speed>0) speed.textContent=' ('+d.server_speed.toFixed(1)+' Мб/с)';
+   if(mon) mon.innerHTML=d.monitor_running?'<br><small class="g">↻ Мониторинг активен</small>':'';
+  } else {
+   box.className='st off';
+   box.innerHTML='○ Не запущен';
+  }
+ }).catch(()=>{});
+},15000);
+{% if monitor_running %}
+setInterval(()=>{
+ fetch('/monitor_log').then(r=>r.json()).then(log=>{
+  const el=document.getElementById('mon-log');
+  if(!el||!log.length)return;
+  const last10=log.slice(-10);
+  el.innerHTML=last10.map(l=>{
+   let cls='';
+   if(l.includes('✓'))cls=' class="g"';
+   else if(l.includes('⚠')||l.includes('ниже'))cls=' style="color:#ffc107"';
+   return '<div'+cls+'>'+l+'</div>';
+  }).join('');
+  el.scrollTop=el.scrollHeight;
+ });
+},15000);
+{% endif %}
+</script>
+</body>
+</html>
