@@ -111,7 +111,7 @@ summary{cursor:pointer;color:#82b1ff;font-size:14px;padding:5px 0}
 {% endif %}
 </div>
 
-<details>
+<details id="d-servers">
 <summary>Все серверы ({{ servers|length }})</summary>
 <div style="overflow-x:auto">
 <table>
@@ -162,7 +162,7 @@ summary{cursor:pointer;color:#82b1ff;font-size:14px;padding:5px 0}
 </div>
 
 <!-- Мониторинг -->
-<details {% if monitor_running %}open{% endif %}>
+<details id="d-monitor" {% if monitor_running %}open{% endif %}>
 <summary>🛡️ Автомониторинг</summary>
 <div class="sec">
  <div style="margin-bottom:6px">
@@ -207,7 +207,7 @@ summary{cursor:pointer;color:#82b1ff;font-size:14px;padding:5px 0}
 </details>
 
 <!-- Настройки -->
-<details>
+<details id="d-settings">
 <summary>⚙️ Настройки</summary>
 <div class="sec">
 <div class="fr">
@@ -223,7 +223,7 @@ summary{cursor:pointer;color:#82b1ff;font-size:14px;padding:5px 0}
 </div>
 </details>
 
-<details>
+<details id="d-blacklist">
 <summary>🚫 Стоп-лист</summary>
 <div class="sec">
 <div style="margin-bottom:4px">{% for w in blacklist %}<span class="bl">{{ w }} <a href="/del_blacklist/{{ loop.index0 }}">✗</a></span>{% endfor %}</div>
@@ -290,6 +290,13 @@ setInterval(()=>{
   }
  }).catch(()=>{});
 },15000);
+// Сохранение состояния раскрытия подменю между перезагрузками
+document.querySelectorAll('details[id]').forEach(function(el){
+ var key='xp_open_'+el.id;
+ var saved=localStorage.getItem(key);
+ if(saved!==null) el.open=(saved==='1');
+ el.addEventListener('toggle',function(){ localStorage.setItem(key,el.open?'1':'0'); });
+});
 {% if monitor_running %}
 setInterval(()=>{
  fetch('/monitor_log').then(r=>r.json()).then(log=>{
