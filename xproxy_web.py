@@ -1,5 +1,5 @@
 #!/data/data/com.termux/files/usr/bin/env python3
-"""XrayProxy Web — pico-soft — v.2.19-beta"""
+"""XrayProxy Web — pico-soft — v.2.20-beta"""
 
 import sys, os, json, threading, time
 from pathlib import Path
@@ -21,6 +21,7 @@ app.secret_key = "xproxy_local"
 
 _task = {"running": False, "type": "", "progress": [], "done": False}
 _lock = threading.Lock()
+_task_id = 0
 
 def tlog(m):
     with _lock: _task["progress"].append(m)
@@ -28,15 +29,20 @@ def tlog(m):
 def get_task_snapshot():
     with _lock: return dict(_task)
 
-def run_bg(func, name="task"):
+def run_bg(func, name="task", force=False):
+    global _task_id
     with _lock:
-        if _task["running"]: return False
+        if _task["running"] and not force: return False
+        _task_id += 1
+        my_id = _task_id
         _task.update({"running": True, "type": name, "progress": [], "done": False})
     def w():
         try: func()
         except Exception as e: tlog(f"Ошибка: {e}")
         finally:
-            with _lock: _task.update({"running": False, "done": True})
+            with _lock:
+                if _task_id == my_id:
+                    _task.update({"running": False, "done": True})
     threading.Thread(target=w, daemon=True).start(); return True
 
 @app.route("/")
@@ -457,7 +463,8 @@ def speed_and_switch():
             tlog("  2. Запустить полный тест (кнопка 🔍)")
             tlog("  3. Нажать ⚡ Авто")
 
-    run_bg(do, "speedtest")
+    lib.cancel_full_test()
+    run_bg(do, "speedtest", force=True)
     return redirect("/task")
 
 @app.route("/export_logs")

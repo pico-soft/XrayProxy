@@ -5,13 +5,21 @@
 
 set -e
 
-VERSION="${1:-}"
-OLD=$(grep -oP 'VERSION = "\K[^"]+' xproxy_lib.py)
+# grep -oP недоступен на macOS (BSD grep) → Python
+OLD=$(python3 -c "import re; print(re.search(r'VERSION = \"([^\"]+)\"', open('xproxy_lib.py').read()).group(1))")
 
+# sed -i требует суффикс на macOS
+if [[ "$(uname)" == "Darwin" ]]; then
+    sedi() { sed -i "" "$@"; }
+else
+    sedi() { sed -i "$@"; }
+fi
+
+VERSION="${1:-}"
 if [ -n "$VERSION" ] && [ "$VERSION" != "$OLD" ]; then
     echo "Бамп: $OLD → $VERSION"
     for f in xproxy_lib.py xproxy_cli.py xproxy_web.py xproxy.sh install.sh README.md templates/index.html templates/task.html update.sh; do
-        [ -f "$f" ] && sed -i "s/$OLD/$VERSION/g" "$f"
+        [ -f "$f" ] && sedi "s/$OLD/$VERSION/g" "$f"
     done
 else
     VERSION="$OLD"

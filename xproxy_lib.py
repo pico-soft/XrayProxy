@@ -1,7 +1,7 @@
 """
 XrayProxy — ядро логики
 pico-soft | https://github.com/pico-soft/XrayProxy
-Версия: 2.19-beta
+Версия: 2.20-beta
 
 Новое в 2.0:
 - Автомониторинг: проверка скорости каждые N минут
@@ -27,7 +27,7 @@ from logging.handlers import RotatingFileHandler
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Optional, List, Dict, Any, Tuple
 
-VERSION = "2.19-beta"
+VERSION = "2.20-beta"
 APP_NAME = "XrayProxy"
 APP_AUTHOR = "pico-soft"
 APP_REPO = "https://github.com/pico-soft/XrayProxy"
@@ -1059,6 +1059,15 @@ def run_full_test_with_early_connect(servers, threshold: float = None,
             progress_cb(m)
 
     connected_server = None
+    _test_cancel.clear()
+
+    # Проверка интернета один раз перед всем тестом
+    msg("Проверяю интернет...")
+    direct = measure_direct_speed(timeout=5)
+    if direct is None:
+        msg("⚠ Нет интернета. Проверь подключение.")
+        return None
+    msg(f"Интернет: {direct} Мбит/с ✓")
 
     # Этап 1: параллельный пинг
     msg(f"Этап 1/3: пинг ({len(servers)})...")
@@ -1074,6 +1083,10 @@ def run_full_test_with_early_connect(servers, threshold: float = None,
     working = []
 
     for i, m in enumerate(alive, 1):
+        if _test_cancel.is_set():
+            _test_cancel.clear()
+            msg("Тест прерван пользователем.")
+            break
         ok = quick_proxy_check(m)
         log(f"proxy {m.get('NAME','')} -> {'OK' if ok else 'FAIL'}", level="debug")
 
@@ -1223,12 +1236,16 @@ def find_next_server(scope: str = "ALL") -> Optional[Dict[str, Any]]:
 
 _monitor_thread: Optional[threading.Thread] = None
 _monitor_stop = threading.Event()
+_test_cancel = threading.Event()
 _monitor_log: List[str] = []
 _monitor_lock = threading.Lock()
 
 def get_monitor_log() -> List[str]:
     with _monitor_lock:
         return list(_monitor_log)
+
+def cancel_full_test():
+    _test_cancel.set()
 
 def _monitor_msg(msg: str):
     log(f"MON: {msg}")
@@ -1280,32 +1297,39 @@ def _monitor_try_switch_in_scope(scope: str, threshold: float) -> bool:
 
 
 def measure_direct_speed(timeout: int = 5) -> Optional[float]:
-    """Быстрая проверка интернета БЕЗ туннеля (2-3 сек).
+    """Быстрая проверка интернета БЕЗ туннеля (1-2 сек на URL).
     Не нужна точная скорость — только понять есть ли канал выше порога."""
     # TCP-пинг к DNS — интернет есть?
+    ping_ok = False
     for host, port in [("8.8.8.8", 53), ("1.1.1.1", 53), ("77.88.8.8", 53)]:
         try:
             s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             s.settimeout(3)
             s.connect((host, port))
             s.close()
+            ping_ok = True
             break
         except Exception:
             continue
-    else:
+
+    if not ping_ok:
         return None
 
-    # Маленькие файлы — быстрый замер (Cloudflare не используем напрямую)
+    # РФ-сегмент: Яндекс CDN — минимальная блокировка, минимальный RTT
+    # Fallback: tele2 и OVH для не-РФ или если Яндекс недоступен
+    url_timeout = min(timeout, 2)
     test_urls = [
+        "https://mc.yandex.ru/metrika/tag.js",              # ~60 KB, Яндекс Метрика CDN
+        "https://yastatic.net/jquery/3.6.4/jquery.min.js",  # ~87 KB, Яндекс статик CDN
         "http://speedtest.tele2.net/100KB.zip",
         "http://proof.ovh.net/files/100Kb.dat",
     ]
     for url in test_urls:
         try:
             r = subprocess.run(
-                ["curl", "--max-time", str(timeout),
+                ["curl", "--max-time", str(url_timeout),
                  "-w", "%{speed_download}", "-o", "/dev/null", url],
-                capture_output=True, text=True, timeout=timeout + 3)
+                capture_output=True, text=True, timeout=url_timeout + 3)
             bps = float(r.stdout.strip() or 0)
             mbps = round(bps * 8 / 1_000_000, 2)
             if mbps > 0.05:
@@ -1313,7 +1337,9 @@ def measure_direct_speed(timeout: int = 5) -> Optional[float]:
         except Exception:
             continue
 
-    return 0.1
+    # TCP-пинг прошёл, но HTTP-серверы теста недоступны (заблокированы).
+    # Возвращаем порог — интернет есть, точно измерить нельзя.
+    return get_direct_speed_threshold()
 
 
 def _monitor_loop():
