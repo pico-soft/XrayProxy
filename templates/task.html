@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>{{ app_name }} — задача</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:#1a1a2e;color:#e0e0e0;font-family:-apple-system,sans-serif;font-size:13px;padding:12px}
+a{color:#64b5f6;text-decoration:none}
+.hdr{background:#16213e;padding:10px;border-radius:8px;margin-bottom:10px}
+.hdr h1{font-size:16px;color:#82b1ff}
+.btn{display:inline-block;padding:8px 14px;border-radius:6px;font-size:13px;color:#fff;background:#1565c0}
+.log{background:#0d1117;border-radius:6px;padding:8px;max-height:70vh;overflow-y:auto;font-family:monospace;font-size:12px;line-height:1.5}
+.ok{color:#69f0ae}.er{color:#ef5350}.in{color:#e0e0e0}
+.sp{display:inline-block;width:14px;height:14px;border:2px solid #555;border-top-color:#82b1ff;border-radius:50%;animation:s .8s linear infinite}
+@keyframes s{to{transform:rotate(360deg)}}
+</style>
+</head>
+<body>
+<div class="hdr"><h1>{% if task.running %}<span class="sp"></span> {{ task.type }}...{% elif task.done %}✓ Готово{% else %}—{% endif %}</h1></div>
+<div class="log" id="l">{% for line in task.progress %}{% if line.startswith('UPDATE_CMD:') %}<div style="margin:8px 0"><input type="text" value="{{ line.replace('UPDATE_CMD:','') }}" readonly onclick="this.select();document.execCommand('copy')" style="background:#0d1117;border:1px solid #69f0ae;color:#69f0ae;padding:8px;border-radius:4px;width:100%;font-family:monospace;font-size:14px;cursor:pointer"><small style="color:#777">↑ нажми чтобы скопировать</small></div>{% else %}<div class="{% if '✓' in line or 'OK' in line %}ok{% elif 'нет' in line or 'Ошибка' in line or '✗' in line %}er{% else %}in{% endif %}">{{ line }}</div>{% endif %}{% endfor %}</div>
+<div style="margin-top:10px">{% if task.done %}<a href="/" class="btn">← Назад</a>{% else %}<p style="color:#777;margin-top:6px">Обновляется...</p>{% endif %}</div>
+<script>
+{% if task.running %}
+function poll(){fetch('/task_status').then(r=>r.json()).then(d=>{
+ const l=document.getElementById('l');
+ l.innerHTML=d.progress.map(x=>{
+  let c='in';
+  if(x.startsWith('UPDATE_CMD:')){
+   let cmd=x.replace('UPDATE_CMD:','');
+   return '<div style="margin:8px 0"><input type="text" value="'+cmd+'" readonly onclick="this.select();document.execCommand(\'copy\')" style="background:#0d1117;border:1px solid #69f0ae;color:#69f0ae;padding:8px;border-radius:4px;width:100%;font-family:monospace;font-size:14px;cursor:pointer" title="Нажми чтобы скопировать"><small style="color:#777">↑ нажми чтобы скопировать</small></div>';
+  }
+  if(x.includes('✓')||x.includes('OK'))c='ok';
+  else if(x.includes('нет')||x.includes('✗')||x.includes('Ошибка'))c='er';
+  return'<div class="'+c+'">'+x+'</div>';
+ }).join('');
+ l.scrollTop=l.scrollHeight;
+ // Если подключился — переход на главную через 2 сек
+ if(d.progress.some(x=>x.includes('⚡ Подключаю'))){
+  document.getElementById('l').innerHTML+='<div class="ok">Переход на главную...</div>';
+  setTimeout(()=>window.location.href='/',2000);
+  return;
+ }
+ if(d.done)setTimeout(()=>location.reload(),500);else setTimeout(poll,1500);
+}).catch(()=>setTimeout(poll,3000))}
+setTimeout(poll,1500);
+{% endif %}
+</script>
+</body>
+</html>

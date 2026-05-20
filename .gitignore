@@ -1,0 +1,14 @@
+__pycache__/
+*.pyc
+*.pyo
+*.zip
+*.log
+servers/
+subscriptions.json
+settings.json
+config.json
+xray
+xray.log
+boot.log
+*.bak
+.aider*
