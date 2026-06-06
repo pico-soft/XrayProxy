@@ -1,7 +1,7 @@
 """
 XrayProxy — ядро логики
 pico-soft | https://github.com/pico-soft/XrayProxy
-Версия: 2.20-beta
+Версия: 2.21-beta
 
 Новое в 2.0:
 - Автомониторинг: проверка скорости каждые N минут
@@ -27,7 +27,7 @@ from logging.handlers import RotatingFileHandler
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Optional, List, Dict, Any, Tuple
 
-VERSION = "2.20-beta"
+VERSION = "2.21-beta"
 APP_NAME = "XrayProxy"
 APP_AUTHOR = "pico-soft"
 APP_REPO = "https://github.com/pico-soft/XrayProxy"
