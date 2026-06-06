@@ -1,5 +1,5 @@
 #!/data/data/com.termux/files/usr/bin/env python3
-"""XrayProxy Web — pico-soft — v.2.20-beta"""
+"""XrayProxy Web — pico-soft — v.2.21-beta"""
 
 import sys, os, json, threading, time
 from pathlib import Path
