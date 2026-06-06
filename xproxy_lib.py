@@ -55,6 +55,10 @@ HTTP_PORT = 10829
 BG_CHECK_INTERVAL = 3600
 PING_WORKERS = 20
 
+# Сколько последних ZIP-логов держать в директории экспорта.
+# Переопределяется через settings.log_archive_keep.
+LOG_ARCHIVE_KEEP_DEFAULT = 10
+
 # Дефолты настроек
 DEFAULT_SETTINGS = {
     "proxy_check_timeout": 2,
@@ -68,6 +72,7 @@ DEFAULT_SETTINGS = {
     "tunnel_speed_threshold": 1.0,        # Мбит/с — порог скорости туннеля
     "channel_speed_probes": None,         # None = DEFAULT_CHANNEL_SPEED_PROBES
     "external_reach_probes": None,        # None = DEFAULT_EXTERNAL_REACH_PROBES
+    "log_archive_keep": None,             # None = LOG_ARCHIVE_KEEP_DEFAULT
 }
 
 DEFAULT_BLACKLIST = [
@@ -176,6 +181,18 @@ def _name_from_url(url: str) -> str:
 def init() -> None:
     XRAY_DIR.mkdir(exist_ok=True)
     SERVERS_DIR.mkdir(exist_ok=True)
+
+    # Очистка временных артефактов прошлых тестов (_run_temp_xray).
+    # Префикс _test_ зарезервирован за временными тестами, ничего рабочего его не носит.
+    leftover = 0
+    for p in XRAY_DIR.glob("_test_*"):
+        try:
+            p.unlink()
+            leftover += 1
+        except Exception:
+            pass
+    if leftover:
+        log(f"init: убрано {leftover} остаточных _test_* артефактов")
 
     if not BLACKLIST_FILE.exists():
         BLACKLIST_FILE.write_text("\n".join(DEFAULT_BLACKLIST) + "\n")
@@ -462,6 +479,14 @@ def get_external_reach_probes() -> List[Dict[str, str]]:
         if out:
             return out
     return [dict(p) for p in DEFAULT_EXTERNAL_REACH_PROBES]
+
+def get_log_archive_keep() -> int:
+    v = _get_setting("log_archive_keep", None)
+    try:
+        n = int(v) if v is not None else LOG_ARCHIVE_KEEP_DEFAULT
+    except (TypeError, ValueError):
+        n = LOG_ARCHIVE_KEEP_DEFAULT
+    return max(1, n)
 
 def get_active_scope() -> str:
     active = get_active_subscription()
@@ -958,6 +983,7 @@ def _run_temp_xray(meta: Dict[str, Any], callback, timeout: int) -> Any:
         return None
     finally:
         _kill_pid(pid_f)
+        pid_f.unlink(missing_ok=True)
         cfg.unlink(missing_ok=True)
         log_f.unlink(missing_ok=True)
 
@@ -1737,6 +1763,22 @@ def migrate(progress_cb=None):
 
 # --- Экспорт ---
 
+def _rotate_log_archives(output_dir: Path, keep: int) -> None:
+    """Оставляет N последних архивов xrayproxy_logs_*.zip в output_dir.
+    Сортировка по имени: timestamp YYYYMMDD_HHMMSS лексикографически совпадает
+    с хронологическим порядком и не сбивается при copy/touch (в отличие от mtime)."""
+    try:
+        archives = sorted(output_dir.glob("xrayproxy_logs_*.zip"), reverse=True)
+    except Exception:
+        return
+    for old in archives[keep:]:
+        try:
+            old.unlink()
+            log(f"rotate: удалён старый архив {old.name}")
+        except Exception as e:
+            log(f"rotate: не удалось удалить {old.name}: {e}", level="warning")
+
+
 def export_logs(output_dir: Optional[Path] = None) -> Optional[str]:
     import zipfile
     if output_dir is None:
@@ -1783,6 +1825,7 @@ def export_logs(output_dir: Optional[Path] = None) -> Optional[str]:
                 z.writestr("monitor.log", "\n".join(mon_log))
 
         log_action("export", str(zp))
+        _rotate_log_archives(output_dir, get_log_archive_keep())
         return str(zp)
     except Exception as e:
         log(f"export error: {e}", level="error")
