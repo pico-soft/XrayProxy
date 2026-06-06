@@ -1,5 +1,5 @@
 # XrayProxy — SOCKS5/HTTP прокси для Android (Termux)
-# Версия: 2.19-beta
+# Версия: 2.21-beta
 # Перед любыми изменениями читай PROJECT_CONTEXT.md
 
 # Правила разработки:

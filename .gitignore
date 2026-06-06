@@ -12,3 +12,4 @@ xray.log
 boot.log
 *.bak
 .aider*
+.DS_Store

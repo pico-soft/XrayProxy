@@ -1,7 +1,7 @@
 #!/bin/bash
 # Сборка xrayproxy.zip для GitHub релиза
 # Использование: ./build.sh [версия]
-# Пример: ./build.sh 2.20-beta
+# Пример: ./build.sh X.Y-beta
 
 set -e
 
