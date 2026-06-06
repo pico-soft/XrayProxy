@@ -66,6 +66,8 @@ DEFAULT_SETTINGS = {
     "min_speed_threshold": 1.0,           # устаревшее, для обратной совместимости
     "direct_speed_threshold": 1.0,        # Мбит/с — порог прямой скорости
     "tunnel_speed_threshold": 1.0,        # Мбит/с — порог скорости туннеля
+    "channel_speed_probes": None,         # None = DEFAULT_CHANNEL_SPEED_PROBES
+    "external_reach_probes": None,        # None = DEFAULT_EXTERNAL_REACH_PROBES
 }
 
 DEFAULT_BLACKLIST = [
@@ -82,7 +84,6 @@ XRAY_DOWNLOAD_URLS = [
     "https://gh-proxy.com/https://github.com/XTLS/Xray-core/releases/latest/download/Xray-android-arm64-v8a.zip",
 ]
 
-SPEED_TEST_URL = "https://speed.cloudflare.com/__down?bytes=5000000"
 IP_CHECK_URLS = [
     "https://api.ipify.org",
     "https://ifconfig.me/ip",
@@ -90,6 +91,22 @@ IP_CHECK_URLS = [
     "https://checkip.amazonaws.com",
 ]
 USER_AGENT = "v2rayNG/1.8.0"
+
+# --- Пробники "честного" замера ---
+# A: скорость канала — близкие/российские CDN, незаблокированные, НЕ Cloudflare.
+# Меняются через settings.channel_speed_probes без правки кода.
+DEFAULT_CHANNEL_SPEED_PROBES = [
+    "https://mc.yandex.ru/metrika/tag.js",              # ~60 KB, Яндекс Метрика CDN
+    "https://yastatic.net/jquery/3.6.4/jquery.min.js",  # ~87 KB, Яндекс статик CDN
+    "https://vk.com/js/api/openapi.js",                 # ~30 KB, VK инфра (fallback)
+]
+# B: достижимость "обычного" внешнего мира — НЕ в РФ-whitelist, НЕ Cloudflare.
+# expect_substr защищает от подмены ответа заглушкой whitelist-провайдера.
+DEFAULT_EXTERNAL_REACH_PROBES = [
+    {"url": "http://detectportal.firefox.com/success.txt", "expect_substr": "success"},
+    {"url": "http://example.com/",                          "expect_substr": "Example Domain"},
+    {"url": "http://neverssl.com/",                         "expect_substr": "NeverSSL"},
+]
 
 
 # --- Логгирование ---
@@ -426,6 +443,25 @@ def get_tunnel_speed_threshold() -> float:
 def set_tunnel_speed_threshold(mbps: float):
     _set_setting("tunnel_speed_threshold", max(0.1, mbps))
     log_action("tunnel_threshold", str(mbps))
+
+def get_channel_speed_probes() -> List[str]:
+    probes = _get_setting("channel_speed_probes", None)
+    if isinstance(probes, list) and probes:
+        return [p for p in probes if isinstance(p, str) and p]
+    return list(DEFAULT_CHANNEL_SPEED_PROBES)
+
+def get_external_reach_probes() -> List[Dict[str, str]]:
+    probes = _get_setting("external_reach_probes", None)
+    if isinstance(probes, list) and probes:
+        out = []
+        for p in probes:
+            if isinstance(p, dict) and p.get("url"):
+                out.append(p)
+            elif isinstance(p, str) and p:
+                out.append({"url": p, "expect_substr": ""})
+        if out:
+            return out
+    return [dict(p) for p in DEFAULT_EXTERNAL_REACH_PROBES]
 
 def get_active_scope() -> str:
     active = get_active_subscription()
@@ -945,34 +981,47 @@ def quick_proxy_check(meta: Dict[str, Any], timeout: int = None) -> bool:
 
 
 def test_speed_via_server(meta: Dict[str, Any], timeout: int = 15) -> float:
+    """Скорость через временный xray. Использует тот же список хостов A,
+    что measure_channel_speed — для сопоставимости с замером канала."""
     def measure(port):
-        try:
-            r = subprocess.run(
-                ["curl", "-sx", f"socks5h://127.0.0.1:{port}", "--max-time", str(timeout),
-                 "-w", "%{speed_download}", "-o", "/dev/null", SPEED_TEST_URL],
-                capture_output=True, text=True, timeout=timeout + 5)
-            return round(float(r.stdout.strip() or 0) * 8 / 1_000_000, 2)
-        except Exception:
-            return 0.0
+        for url in get_channel_speed_probes():
+            try:
+                r = subprocess.run(
+                    ["curl", "-sx", f"socks5h://127.0.0.1:{port}", "--max-time", str(timeout),
+                     "-w", "%{speed_download}", "-o", "/dev/null", url],
+                    capture_output=True, text=True, timeout=timeout + 5)
+                mbps = round(float(r.stdout.strip() or 0) * 8 / 1_000_000, 2)
+                if mbps > 0:
+                    log(f"tunnel_speed(temp): {mbps} Мбит/с via {_probe_label(url)}")
+                    return mbps
+            except Exception:
+                continue
+        return 0.0
     result = _run_temp_xray(meta, measure, timeout)
     return result if isinstance(result, float) else 0.0
 
 
 def measure_current_speed(timeout: int = 15) -> Optional[Tuple[float, float]]:
+    """Скорость через активный туннель. Список хостов A с фолбэком —
+    сопоставимо с замером канала."""
     if not xray_is_running():
         return None
-    try:
-        r = subprocess.run(
-            ["curl", "-sx", f"socks5h://127.0.0.1:{SOCKS_PORT}", "--max-time", str(timeout),
-             "-w", "%{speed_download}|%{time_total}", "-o", "/dev/null", SPEED_TEST_URL],
-            capture_output=True, text=True, timeout=timeout + 5)
-        parts = r.stdout.strip().split("|")
-        if len(parts) != 2:
-            return None
-        mbps = round(float(parts[0] or 0) * 8 / 1_000_000, 2)
-        return (mbps, float(parts[1])) if mbps > 0 else None
-    except Exception:
-        return None
+    for url in get_channel_speed_probes():
+        try:
+            r = subprocess.run(
+                ["curl", "-sx", f"socks5h://127.0.0.1:{SOCKS_PORT}", "--max-time", str(timeout),
+                 "-w", "%{speed_download}|%{time_total}", "-o", "/dev/null", url],
+                capture_output=True, text=True, timeout=timeout + 5)
+            parts = r.stdout.strip().split("|")
+            if len(parts) != 2:
+                continue
+            mbps = round(float(parts[0] or 0) * 8 / 1_000_000, 2)
+            if mbps > 0:
+                log(f"tunnel_speed: {mbps} Мбит/с via {_probe_label(url)}")
+                return (mbps, float(parts[1]))
+        except Exception:
+            continue
+    return None
 
 
 def run_ping_tests(servers, progress_cb=None) -> list:
@@ -1296,10 +1345,20 @@ def _monitor_try_switch_in_scope(scope: str, threshold: float) -> bool:
     return False
 
 
-def measure_direct_speed(timeout: int = 5) -> Optional[float]:
-    """Быстрая проверка интернета БЕЗ туннеля (1-2 сек на URL).
-    Не нужна точная скорость — только понять есть ли канал выше порога."""
-    # TCP-пинг к DNS — интернет есть?
+def _probe_label(url: str) -> str:
+    """Короткая метка хоста для логов: detectportal/example/yastatic/..."""
+    try:
+        host = urllib.parse.urlparse(url).hostname or url
+        parts = host.split(".")
+        return parts[0] if parts else host
+    except Exception:
+        return url
+
+
+def measure_channel_speed(timeout: int = 5) -> Optional[float]:
+    """Сигнал A — честная скорость канала.
+    Меряет по близким незаблокированным CDN (см. get_channel_speed_probes).
+    Возвращает Мбит/с; None если нет связи вообще."""
     ping_ok = False
     for host, port in [("8.8.8.8", 53), ("1.1.1.1", 53), ("77.88.8.8", 53)]:
         try:
@@ -1315,16 +1374,8 @@ def measure_direct_speed(timeout: int = 5) -> Optional[float]:
     if not ping_ok:
         return None
 
-    # РФ-сегмент: Яндекс CDN — минимальная блокировка, минимальный RTT
-    # Fallback: tele2 и OVH для не-РФ или если Яндекс недоступен
     url_timeout = min(timeout, 2)
-    test_urls = [
-        "https://mc.yandex.ru/metrika/tag.js",              # ~60 KB, Яндекс Метрика CDN
-        "https://yastatic.net/jquery/3.6.4/jquery.min.js",  # ~87 KB, Яндекс статик CDN
-        "http://speedtest.tele2.net/100KB.zip",
-        "http://proof.ovh.net/files/100Kb.dat",
-    ]
-    for url in test_urls:
+    for url in get_channel_speed_probes():
         try:
             r = subprocess.run(
                 ["curl", "--max-time", str(url_timeout),
@@ -1333,13 +1384,80 @@ def measure_direct_speed(timeout: int = 5) -> Optional[float]:
             bps = float(r.stdout.strip() or 0)
             mbps = round(bps * 8 / 1_000_000, 2)
             if mbps > 0.05:
+                log(f"channel_speed: {mbps} Мбит/с via {_probe_label(url)} ({url})")
                 return mbps
         except Exception:
             continue
 
-    # TCP-пинг прошёл, но HTTP-серверы теста недоступны (заблокированы).
-    # Возвращаем порог — интернет есть, точно измерить нельзя.
+    # TCP есть, но ни один пробник A не отдал данные — отдаём порог как fallback.
+    log("channel_speed: ни один пробник A не отдал данные — fallback на порог")
     return get_direct_speed_threshold()
+
+
+def check_external_reach(timeout: int = 3) -> Tuple[bool, Optional[float], List[Tuple[str, str]]]:
+    """Сигнал B — доступность "обычного" внешнего интернета.
+    Прогоняет ВСЕ пробники B (для калибровки), валидирует подстроку в теле.
+    Возвращает (reachable, latency_ms первого OK, [(label, "OK"|"FAIL(reason)"), ...]).
+    """
+    statuses: List[Tuple[str, str]] = []
+    overall_reachable = False
+    first_latency_ms: Optional[float] = None
+
+    for probe in get_external_reach_probes():
+        url = probe.get("url", "") if isinstance(probe, dict) else str(probe)
+        expect = probe.get("expect_substr", "") if isinstance(probe, dict) else ""
+        if not url:
+            continue
+        label = _probe_label(url)
+
+        try:
+            r = subprocess.run(
+                ["curl", "--max-time", str(timeout),
+                 "-sS", "-L", "-w", "\n__TIME__%{time_total}", url],
+                capture_output=True, text=True, timeout=timeout + 3)
+            if r.returncode != 0:
+                reason = "timeout" if "timed out" in (r.stderr or "").lower() else "net"
+                statuses.append((label, f"FAIL({reason})"))
+                log(f"reach[{label}]: FAIL({reason}) rc={r.returncode} url={url}")
+                continue
+
+            out = r.stdout
+            marker = "\n__TIME__"
+            ttotal_str = ""
+            body = out
+            if marker in out:
+                body, _, ttotal_str = out.rpartition(marker)
+
+            if expect and expect not in body:
+                statuses.append((label, "FAIL(body)"))
+                log(f"reach[{label}]: FAIL(body) ожидал '{expect}' url={url}")
+                continue
+
+            lat_ms: Optional[float] = None
+            try:
+                lat_ms = round(float(ttotal_str) * 1000, 1)
+            except Exception:
+                pass
+
+            statuses.append((label, "OK"))
+            log(f"reach[{label}]: OK lat={lat_ms}мс url={url}")
+            if not overall_reachable:
+                overall_reachable = True
+                first_latency_ms = lat_ms
+        except subprocess.TimeoutExpired:
+            statuses.append((label, "FAIL(timeout)"))
+            log(f"reach[{label}]: FAIL(timeout) url={url}")
+        except Exception as e:
+            statuses.append((label, "FAIL(err)"))
+            log(f"reach[{label}]: FAIL(err) {e} url={url}")
+
+    return overall_reachable, first_latency_ms, statuses
+
+
+def measure_direct_speed(timeout: int = 5) -> Optional[float]:
+    """Обратная совместимость: делегирует на measure_channel_speed (честный замер A).
+    Старые вызовы из CLI/Web/тестов продолжают работать без правок."""
+    return measure_channel_speed(timeout)
 
 
 def _monitor_loop():
@@ -1374,9 +1492,9 @@ def _monitor_loop():
         if not get_auto_monitor() or not xray_is_running():
             continue
 
-        # --- Шаг 1: прямая скорость ---
+        # --- Шаг 1: прямая скорость (сигнал A — честный замер канала) ---
         _monitor_msg("Замер прямой скорости...")
-        direct_speed = measure_direct_speed(timeout=10)
+        direct_speed = measure_channel_speed(timeout=10)
 
         if direct_speed is None:
             _monitor_msg("Прямая: нет ответа — интернет отсутствует, пропускаю")
@@ -1384,6 +1502,14 @@ def _monitor_loop():
             continue
 
         _monitor_msg(f"Прямая: {direct_speed} Мбит/с (порог: {direct_thr})")
+
+        # --- Шаг 1b: достижимость внешнего мира (сигнал B, только лог) ---
+        reach_ok, reach_lat, reach_statuses = check_external_reach(timeout=3)
+        status_str = " ".join(f"{lbl}={st}" for lbl, st in reach_statuses) or "нет пробников"
+        _monitor_msg(f"Внешний мир: {'OK' if reach_ok else 'недоступен'} [{status_str}]")
+
+        if direct_speed >= direct_thr and not reach_ok:
+            _monitor_msg(f"⚠ whitelist? канал={direct_speed} Мбит/с | B {status_str}")
 
         # --- Шаг 2: замер туннеля ---
         _monitor_msg("Замер через туннель...")
