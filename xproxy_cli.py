@@ -1,5 +1,5 @@
 #!/data/data/com.termux/files/usr/bin/env python3
-"""XrayProxy CLI — pico-soft — v.2.21-beta"""
+"""XrayProxy CLI — pico-soft — v.2.22-beta"""
 
 import sys, os
 from pathlib import Path
@@ -231,7 +231,7 @@ def cmd_add_server():
     if count > 0:
         print(c(C.G, f"Добавлено: {count}"))
         if confirm("Протестировать добавленные?"):
-            manual = [s for s in lib.list_server_files() if s.get("SOURCE") == lib.MANUAL_SOURCE]
+            manual = lib.get_active_servers(lib.MANUAL_SOURCE)
             untested = [s for s in manual if s.get("PING_MS", -1) < 0]
             if untested:
                 cmd_tests_servers(untested)
@@ -245,7 +245,7 @@ def cmd_import_file():
     if skipped: print(c(C.GR, f"Исключено (стоп-лист): {skipped}"))
     if errors: print(c(C.R, f"Не распознано: {errors}"))
     if added > 0 and confirm("Протестировать?"):
-        manual = [s for s in lib.list_server_files() if s.get("SOURCE") == lib.MANUAL_SOURCE]
+        manual = lib.get_active_servers(lib.MANUAL_SOURCE)
         untested = [s for s in manual if s.get("PING_MS", -1) < 0]
         if untested:
             cmd_tests_servers(untested)
