@@ -1,5 +1,5 @@
 #!/data/data/com.termux/files/usr/bin/env python3
-"""XrayProxy CLI — pico-soft — v.2.21-beta"""
+"""XrayProxy CLI — pico-soft — v.2.22-beta"""
 
 import sys, os
 from pathlib import Path

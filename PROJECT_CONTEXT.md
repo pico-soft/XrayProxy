@@ -5,7 +5,7 @@
 SOCKS5/HTTP прокси для Android (Termux) через xray-core. Не создаёт VPN-интерфейс.
 Порты: SOCKS5=10828, HTTP=10829. Web на Flask :8080.
 
-**Версия:** 2.21-beta | **Автор:** pico-soft | **GitHub:** github.com/pico-soft/XrayProxy
+**Версия:** 2.22-beta | **Автор:** pico-soft | **GitHub:** github.com/pico-soft/XrayProxy
 
 ## Файлы
 

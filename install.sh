@@ -1,6 +1,6 @@
 #!/data/data/com.termux/files/usr/bin/bash
 # ============================================
-# XrayProxy 2.21-beta — установщик
+# XrayProxy 2.22-beta — установщик
 # pico-soft | github.com/pico-soft/XrayProxy
 # ============================================
 
