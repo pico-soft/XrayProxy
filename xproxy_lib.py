@@ -641,11 +641,11 @@ MANUAL_SOURCE = "__manual__"
 
 def add_server_manually(uri: str) -> Optional[str]:
     """Добавляет один сервер вручную по ссылке vless:// или trojan://.
-    Возвращает имя сервера или None при ошибке."""
+    Возвращает имя сервера или None при ошибке.
+    Blacklist на импорте НЕ применяется — фильтрация только на чтении
+    (через get_active_servers), сервер можно «вернуть», удалив маску."""
     meta = parse_proxy_uri(uri)
     if not meta:
-        return None
-    if check_blacklisted(meta["NAME"]):
         return None
 
     if not meta["NAME"]:
@@ -663,7 +663,8 @@ def add_server_manually(uri: str) -> Optional[str]:
 
 def import_servers_batch(text: str) -> Tuple[int, int, int]:
     """Импортирует серверы из текста (по одной ссылке на строку).
-    Возвращает (добавлено, пропущено_блэклист, ошибок)."""
+    Возвращает (добавлено, пропущено_блэклист=0, ошибок).
+    Blacklist на импорте НЕ применяется — фильтрация только на чтении."""
     added = skipped = errors = 0
     existing = [int(f.stem) for f in SERVERS_DIR.glob("*.meta") if f.stem.isdigit()]
     idx = max(existing) + 1 if existing else 1
@@ -675,9 +676,6 @@ def import_servers_batch(text: str) -> Tuple[int, int, int]:
         meta = parse_proxy_uri(line)
         if not meta:
             errors += 1
-            continue
-        if check_blacklisted(meta["NAME"]):
-            skipped += 1
             continue
         if not meta["NAME"]:
             meta["NAME"] = f"Manual {meta['HOST'][:20]}"
@@ -722,9 +720,6 @@ def parse_subscription_content(content: str, source_url: str) -> Tuple[int, int]
         meta = parse_proxy_uri(line)
         if not meta:
             continue
-        if check_blacklisted(meta["NAME"]):
-            skipped += 1
-            continue
         if not meta["NAME"]:
             meta["NAME"] = f"Server {idx}"
         meta.update({"PING_MS": -1, "SPEED_MBPS": -1, "SOURCE": source_url, "LAST_TESTED": None})
@@ -739,6 +734,10 @@ def parse_subscription_content(content: str, source_url: str) -> Tuple[int, int]
 # --- Серверы ---
 
 def list_server_files() -> List[Dict[str, Any]]:
+    """RAW: все серверы из SERVERS_DIR без blacklist-фильтра.
+    Использовать ТОЛЬКО для импорта/ре-импорта (чистка дублей по SOURCE),
+    поиска текущего сервера, экспорта и счётчиков «всего».
+    Для UI / выбора / автовыбора / мониторинга — get_active_servers."""
     result = []
     for f in sorted(SERVERS_DIR.glob("*.meta")):
         try:
@@ -749,13 +748,32 @@ def list_server_files() -> List[Dict[str, Any]]:
             continue
     return result
 
+def is_blacklisted_meta(m: Dict[str, Any]) -> bool:
+    """Предикат blacklist по NAME (подстрока, case-insensitive)."""
+    return check_blacklisted(m.get("NAME", ""))
+
+def get_active_servers(scope: str = "ALL", alive_only: bool = False) -> List[Dict[str, Any]]:
+    """Единая точка фильтрации для UI / автовыбора / мониторинга / тестов.
+    1) raw из list_server_files()
+    2) если scope != "ALL" — фильтр по SOURCE
+    3) отбросить is_blacklisted_meta — скрытие на лету, серверы остаются в хранилище
+    4) если alive_only — PING_MS>0 и SPEED_MBPS>0."""
+    result = list_server_files()
+    if scope != "ALL":
+        result = [s for s in result if s.get("SOURCE") == scope]
+    result = [s for s in result if not is_blacklisted_meta(s)]
+    if alive_only:
+        result = [s for s in result
+                  if s.get("PING_MS", -1) > 0 and s.get("SPEED_MBPS", -1) > 0]
+    return result
+
 def get_servers_by_scope(scope: str) -> List[Dict[str, Any]]:
-    all_s = list_server_files()
-    return all_s if scope == "ALL" else [s for s in all_s if s.get("SOURCE") == scope]
+    """Делегирует на get_active_servers (с blacklist-фильтром) — обратная совместимость."""
+    return get_active_servers(scope)
 
 def get_alive_servers(scope: str = "ALL") -> List[Dict[str, Any]]:
-    return [s for s in get_servers_by_scope(scope)
-            if s.get("PING_MS", -1) > 0 and s.get("SPEED_MBPS", -1) > 0]
+    """Делегирует на get_active_servers(scope, alive_only=True) — обратная совместимость."""
+    return get_active_servers(scope, alive_only=True)
 
 def update_server_meta(meta_file: str, updates: Dict[str, Any]):
     path = Path(meta_file)
@@ -1254,7 +1272,7 @@ def fetch_subscription(url: str, exclude_source: Optional[str] = None,
 
     msg("Прямой доступ не удался, ищу прокси...")
     candidates = sort_servers_by_speed(
-        [m for m in list_server_files() if m.get("SOURCE") != exclude_source]
+        [m for m in get_active_servers() if m.get("SOURCE") != exclude_source]
     )[:max_candidates]
 
     if not candidates:
@@ -1647,7 +1665,7 @@ def _monitor_loop():
                 _monitor_msg(f"Fetch: {get_subscription_name(sub_url)}...")
                 update_single_subscription(sub_url, progress_cb=_monitor_msg)
 
-            servers = list_server_files()
+            servers = get_active_servers()
             if servers:
                 _monitor_msg(f"Тест {len(servers)} серверов...")
                 alive = run_ping_tests(servers)
@@ -1707,7 +1725,7 @@ def run_background_check():
     log("BG check started")
     while True:
         try:
-            servers = list_server_files()
+            servers = get_active_servers()
             if servers:
                 log(f"BG: {len(servers)} servers")
                 alive = run_ping_tests(servers)

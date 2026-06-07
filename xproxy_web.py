@@ -198,7 +198,7 @@ def add_servers_batch():
         if skipped: tlog(f"Исключено (стоп-лист): {skipped}")
         if errors: tlog(f"Не распознано: {errors}")
         if added > 0:
-            manual = [s for s in lib.list_server_files() if s.get("SOURCE") == lib.MANUAL_SOURCE and s.get("PING_MS", -1) < 0]
+            manual = [s for s in lib.get_active_servers(lib.MANUAL_SOURCE) if s.get("PING_MS", -1) < 0]
             if manual:
                 tlog(f"Тестирую {len(manual)} серверов...")
                 alive = lib.run_ping_tests(manual, lambda i,t,n,p: tlog(f"[{i}/{t}] {n[:30]} {'OK '+str(p) if p>0 else 'нет'}"))
@@ -225,7 +225,7 @@ def import_file():
         if skipped: tlog(f"Исключено (стоп-лист): {skipped}")
         if errors: tlog(f"Не распознано: {errors}")
         if added > 0:
-            manual = [s for s in lib.list_server_files() if s.get("SOURCE") == lib.MANUAL_SOURCE and s.get("PING_MS", -1) < 0]
+            manual = [s for s in lib.get_active_servers(lib.MANUAL_SOURCE) if s.get("PING_MS", -1) < 0]
             if manual:
                 tlog(f"Тестирую {len(manual)} серверов...")
                 alive = lib.run_ping_tests(manual, lambda i,t,n,p: tlog(f"[{i}/{t}] {n[:30]} {'OK '+str(p) if p>0 else 'нет'}"))
