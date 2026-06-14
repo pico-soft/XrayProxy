@@ -1,7 +1,7 @@
 """
 XrayProxy — ядро логики
 pico-soft | https://github.com/pico-soft/XrayProxy
-Версия: 2.22-beta
+Версия: 2.23-beta
 
 Новое в 2.0:
 - Автомониторинг: проверка скорости каждые N минут
@@ -27,7 +27,7 @@ from logging.handlers import RotatingFileHandler
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Optional, List, Dict, Any, Tuple
 
-VERSION = "2.22-beta"
+VERSION = "2.23-beta"
 APP_NAME = "XrayProxy"
 APP_AUTHOR = "pico-soft"
 APP_REPO = "https://github.com/pico-soft/XrayProxy"
@@ -52,7 +52,7 @@ APP_LOG_BACKUP_COUNT = 1
 
 SOCKS_PORT = 10828
 HTTP_PORT = 10829
-BG_CHECK_INTERVAL = 3600
+BG_CHECK_INTERVAL_DEFAULT = 3600
 PING_WORKERS = 20
 
 # Сколько последних ZIP-логов держать в директории экспорта.
@@ -73,6 +73,7 @@ DEFAULT_SETTINGS = {
     "channel_speed_probes": None,         # None = DEFAULT_CHANNEL_SPEED_PROBES
     "external_reach_probes": None,        # None = DEFAULT_EXTERNAL_REACH_PROBES
     "log_archive_keep": None,             # None = LOG_ARCHIVE_KEEP_DEFAULT
+    "bg_check_interval": None,            # None = BG_CHECK_INTERVAL_DEFAULT, минимум 300с
 }
 
 DEFAULT_BLACKLIST = [
@@ -488,6 +489,16 @@ def get_log_archive_keep() -> int:
         n = LOG_ARCHIVE_KEEP_DEFAULT
     return max(1, n)
 
+def get_bg_check_interval() -> int:
+    """Период фоновой часовой проверки (run_background_check), секунды.
+    Минимум 300с (5 мин) чтобы не перегружать сеть."""
+    v = _get_setting("bg_check_interval", None)
+    try:
+        n = int(v) if v is not None else BG_CHECK_INTERVAL_DEFAULT
+    except (TypeError, ValueError):
+        n = BG_CHECK_INTERVAL_DEFAULT
+    return max(300, n)
+
 def get_active_scope() -> str:
     active = get_active_subscription()
     if active and active in get_subscription_urls():
@@ -541,6 +552,21 @@ def remove_subscription(url: str):
 
 def count_servers_in_sub(url: str) -> int:
     return sum(1 for m in list_server_files() if m.get("SOURCE") == url)
+
+def set_subscription_update_status(url: str, ok: bool):
+    """Записывает результат последнего ФЕТЧА подписки (не живость серверов внутри).
+    Поля last_update_ok / last_update_ts читаются UI для индикатора подписки.
+    Обратная совместимость: их отсутствие = «не обновлялась», нейтральный статус."""
+    subs = get_subscriptions()
+    ts = _now_str()
+    changed = False
+    for s in subs:
+        if s.get("url") == url:
+            s["last_update_ok"] = bool(ok)
+            s["last_update_ts"] = ts
+            changed = True
+    if changed:
+        SUBS_FILE.write_text(json.dumps(subs, indent=2, ensure_ascii=False))
 
 
 # --- Стоп-лист ---
@@ -1243,22 +1269,54 @@ def fetch_direct(url: str, timeout: int = 10) -> Optional[str]:
     except Exception:
         return None
 
+def _fetch_curl(url: str, proxy: Optional[str] = None, timeout: int = 20) -> Optional[str]:
+    """Скачивает текст по URL через curl. proxy=None — без -x (трафик идёт по умолчанию,
+    через системные routes/VPN если есть). Возвращает текст или None."""
+    cmd = ["curl", "-fsSL", "-A", USER_AGENT, "--max-time", str(timeout)]
+    if proxy:
+        cmd.extend(["-x", proxy])
+    cmd.append(url)
+    try:
+        r = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout + 5)
+        return r.stdout if r.returncode == 0 and r.stdout else None
+    except Exception:
+        return None
+
 def fetch_via_proxy(url: str, via: Dict[str, Any], timeout: int = 20) -> Optional[str]:
     def do_fetch(port):
-        try:
-            r = subprocess.run(
-                ["curl", "-fsSL", "-x", f"socks5h://127.0.0.1:{port}",
-                 "-A", USER_AGENT, "--max-time", str(timeout), url],
-                capture_output=True, text=True, timeout=timeout + 5)
-            return r.stdout if r.returncode == 0 and r.stdout else None
-        except Exception:
-            return None
+        return _fetch_curl(url, proxy=f"socks5h://127.0.0.1:{port}", timeout=timeout)
     return _run_temp_xray(via, do_fetch, timeout)
 
-def fetch_subscription(url: str, exclude_source: Optional[str] = None,
+def _recent_working_servers(within_hours: int = 24) -> List[Dict[str, Any]]:
+    """Серверы, у которых SPEED_MBPS>0 И LAST_TESTED не старше within_hours.
+    Источник — get_active_servers (т.е. с blacklist-фильтром).
+    Отсортированы по скорости (быстрые первыми)."""
+    cutoff = datetime.now().timestamp() - within_hours * 3600
+    out = []
+    for s in get_active_servers():
+        if s.get("SPEED_MBPS", 0) <= 0:
+            continue
+        lt = s.get("LAST_TESTED")
+        if not lt:
+            continue
+        try:
+            ts = datetime.strptime(lt, "%Y-%m-%d %H:%M").timestamp()
+        except Exception:
+            continue
+        if ts >= cutoff:
+            out.append(s)
+    return sort_servers_by_speed(out)
+
+def _fetch_url_cascade(url: str, exclude_source: Optional[str] = None,
                        progress_cb=None, max_candidates: int = 5,
                        total_timeout: int = 120) -> Optional[str]:
-    log_action("fetch", url[:60])
+    """Каскад скачивания произвольного URL:
+    1) напрямую (fetch_direct, urllib)
+    2) tun0 / системный VPN (если есть)
+    3) HTTP_PROXY env (если есть)
+    4) активный XrayProxy туннель (socks5h://127.0.0.1:SOCKS_PORT, если xray запущен)
+    5) temp xray по «рабочим за 24ч» серверам (исключая exclude_source).
+    Используется для фетча подписок и любого другого внешнего URL."""
     def msg(m):
         log(m)
         if progress_cb:
@@ -1267,16 +1325,35 @@ def fetch_subscription(url: str, exclude_source: Optional[str] = None,
     msg("Пробую напрямую...")
     content = fetch_direct(url)
     if content:
-        msg("Загружено напрямую")
+        msg("OK напрямую")
         return content
 
-    msg("Прямой доступ не удался, ищу прокси...")
-    candidates = sort_servers_by_speed(
-        [m for m in get_active_servers() if m.get("SOURCE") != exclude_source]
-    )[:max_candidates]
+    sys_proxy = _detect_system_proxy()
+    if sys_proxy == "__vpn__":
+        msg("Пробую через системный VPN (tun0)...")
+        content = _fetch_curl(url, proxy=None, timeout=20)
+        if content:
+            msg("OK через VPN")
+            return content
+    elif sys_proxy:
+        msg(f"Пробую через системный прокси: {sys_proxy[:30]}")
+        content = _fetch_curl(url, proxy=sys_proxy, timeout=20)
+        if content:
+            msg("OK через системный прокси")
+            return content
 
+    if xray_is_running():
+        msg("Пробую через активный туннель XrayProxy...")
+        content = _fetch_curl(url, proxy=f"socks5h://127.0.0.1:{SOCKS_PORT}", timeout=25)
+        if content:
+            msg("OK через активный туннель")
+            return content
+
+    msg("Перебираю рабочие серверы за 24ч...")
+    candidates = [m for m in _recent_working_servers(24)
+                  if m.get("SOURCE") != exclude_source][:max_candidates]
     if not candidates:
-        msg("Нет серверов для туннеля")
+        msg("Нет подходящих рабочих серверов (24ч)")
         return None
 
     start_time = time.time()
@@ -1293,11 +1370,22 @@ def fetch_subscription(url: str, exclude_source: Optional[str] = None,
     msg("Все варианты исчерпаны")
     return None
 
+def fetch_subscription(url: str, exclude_source: Optional[str] = None,
+                       progress_cb=None, max_candidates: int = 5,
+                       total_timeout: int = 120) -> Optional[str]:
+    log_action("fetch", url[:60])
+    return _fetch_url_cascade(url, exclude_source=exclude_source,
+                              progress_cb=progress_cb,
+                              max_candidates=max_candidates,
+                              total_timeout=total_timeout)
+
 def update_single_subscription(url: str, progress_cb=None) -> Tuple[bool, int, int]:
     content = fetch_subscription(url, exclude_source=url, progress_cb=progress_cb)
     if not content:
+        set_subscription_update_status(url, False)
         return False, 0, 0
     added, skipped = parse_subscription_content(content, url)
+    set_subscription_update_status(url, True)
     set_last_update_time()
     return True, added, skipped
 
@@ -1719,23 +1807,44 @@ def is_monitor_running() -> bool:
 # --- Фоновая проверка (отдельный процесс, раз в час) ---
 
 def run_background_check():
+    """Фоновая часовая (по умолчанию) проверка:
+    1) гейт — есть ли интернет (сигнал A); нет → лог + тихий пропуск + sleep
+    2) сигнал B — только для лога, не блокирует
+    3) обновить подписки по get_active_scope (одну активную или все)
+    4) ре-тест существующих серверов (ping/proxy/speed)
+    5) sleep get_bg_check_interval()."""
     import signal as sig
     sig.signal(sig.SIGTERM, lambda *_: (BG_PID_FILE.unlink(missing_ok=True), sys.exit(0)))
     BG_PID_FILE.write_text(str(os.getpid()))
     log("BG check started")
     while True:
         try:
-            servers = get_active_servers()
-            if servers:
-                log(f"BG: {len(servers)} servers")
-                alive = run_ping_tests(servers)
-                working = run_proxy_checks(alive)
-                if working:
-                    run_speed_tests(working)
-                log(f"BG done: {len(working)}/{len(servers)}")
+            ch_speed = measure_channel_speed(timeout=5)
+            if ch_speed is None:
+                log("BG: интернет недоступен, пропускаю цикл")
+            else:
+                log(f"BG: канал {ch_speed} Мбит/с")
+                reach_ok, _, reach_statuses = check_external_reach(timeout=3)
+                status_str = " ".join(f"{lbl}={st}" for lbl, st in reach_statuses) or "нет пробников"
+                log(f"BG: внешний мир {'OK' if reach_ok else 'недоступен'} [{status_str}]")
+
+                scope = get_active_scope()
+                sub_urls = get_subscription_urls() if scope == "ALL" else [scope]
+                for sub in sub_urls:
+                    log(f"BG: обновляю подписку {get_subscription_name(sub)}")
+                    update_single_subscription(sub)
+
+                servers = get_active_servers()
+                if servers:
+                    log(f"BG: {len(servers)} servers")
+                    alive = run_ping_tests(servers)
+                    working = run_proxy_checks(alive)
+                    if working:
+                        run_speed_tests(working)
+                    log(f"BG done: {len(working)}/{len(servers)}")
         except Exception as e:
             log(f"BG error: {e}", level="error")
-        time.sleep(BG_CHECK_INTERVAL)
+        time.sleep(get_bg_check_interval())
 
 def start_background_check() -> bool:
     if is_background_running():

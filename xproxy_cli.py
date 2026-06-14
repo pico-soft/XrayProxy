@@ -1,5 +1,5 @@
 #!/data/data/com.termux/files/usr/bin/env python3
-"""XrayProxy CLI — pico-soft — v.2.22-beta"""
+"""XrayProxy CLI — pico-soft — v.2.23-beta"""
 
 import sys, os
 from pathlib import Path
@@ -265,6 +265,12 @@ def cmd_tests_servers(servers):
     lib.run_speed_tests(working, lambda i,t,n,s: print(f"  [{i}/{t}] {n[:40]:<42} {c(C.G,str(s)+'Мб/с') if s>0 else c(C.R,'нет')}"))
     print(c(C.G, "Готово."))
 
+def _sub_status_dot(s) -> str:
+    ok = s.get("last_update_ok")
+    if ok is True:  return c(C.G, "●")
+    if ok is False: return c(C.R, "●")
+    return c(C.GR, "○")
+
 def cmd_list_subs():
     subs = lib.get_subscriptions()
     if not subs: print(c(C.Y, "Пусто.")); return
@@ -273,7 +279,7 @@ def cmd_list_subs():
         cnt = lib.count_servers_in_sub(s["url"])
         alive = len(lib.get_alive_servers(s["url"]))
         mark = " ●" if s["url"] == active else ""
-        print(f"  {c(C.G, f'{i:>2}.')} {s['name']} {c(C.GR, f'[{alive}/{cnt}]')}{c(C.Y, mark)}")
+        print(f"  {c(C.G, f'{i:>2}.')} {_sub_status_dot(s)} {s['name']} {c(C.GR, f'[{alive}/{cnt}]')}{c(C.Y, mark)}")
 
 def cmd_del_sub():
     cmd_list_subs()
@@ -289,7 +295,7 @@ def cmd_choose_sub():
     print(f"  {c(C.G, '0.')} Все подписки")
     for i, s in enumerate(subs, 1):
         mark = " ●" if s["url"] == active else ""
-        print(f"  {c(C.G, f'{i:>2}.')} {s['name']}{c(C.Y, mark)}")
+        print(f"  {c(C.G, f'{i:>2}.')} {_sub_status_dot(s)} {s['name']}{c(C.Y, mark)}")
     ch = inp(">")
     if ch == "0": lib.set_active_subscription(None); print(c(C.G, "Все."))
     elif ch.isdigit() and 0<int(ch)<=len(subs):
