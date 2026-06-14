@@ -13,3 +13,4 @@ boot.log
 *.bak
 .aider*
 .DS_Store
+release_notes.md
