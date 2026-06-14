@@ -133,7 +133,7 @@ summary{cursor:pointer;color:#82b1ff;font-size:14px;padding:5px 0}
 <div class="sec">
 {% for s in subs %}
 <div style="display:flex;justify-content:space-between;align-items:center;padding:3px 0;border-bottom:1px solid #2a2a3e">
- <div>{% if s.url==active_url %}<b style="color:#ffc107">●</b>{% endif %} <a href="/set_active_sub/{{ loop.index0 }}">{{ s.name }}</a></div>
+ <div>{% if s.url==active_url %}<b style="color:#ffc107">●</b>{% endif %} {% if s.last_update_ok is none %}<span style="color:#666" title="не обновлялась">○</span>{% elif s.last_update_ok %}<span style="color:#22c55e" title="обновлено {{ s.last_update_ts }}">●</span>{% else %}<span style="color:#ef4444" title="не удалось обновить ({{ s.last_update_ts }})">●</span>{% endif %} <a href="/set_active_sub/{{ loop.index0 }}">{{ s.name }}</a></div>
  <a href="/del_sub/{{ loop.index0 }}" class="btn bs br" onclick="return confirm('Удалить?')">✗</a>
 </div>
 {% endfor %}
