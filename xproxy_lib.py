@@ -230,21 +230,74 @@ def init() -> None:
 def xray_installed() -> bool:
     return XRAY_BIN.exists() and os.access(XRAY_BIN, os.X_OK)
 
-def _detect_system_proxy() -> Optional[str]:
-    """Ищет активный VPN/прокси в системе."""
-    # Проверяем HTTP_PROXY / HTTPS_PROXY
+def _vpn_iface_exists() -> bool:
+    """True, если в системе ЕСТЬ tun/wg/ppp/utun-интерфейс (по ИМЕНИ).
+    ВНИМАНИЕ: наличие интерфейса НЕ гарантирует, что трафик нашего процесса идёт через него
+    (split-туннель). Для решения о реальном маршруте — _detect_system_proxy()."""
+    import shutil, re
+    ip_bin = shutil.which("ip")
+    if not ip_bin:
+        return False
+    try:
+        r = subprocess.run([ip_bin, "-o", "link", "show"],
+                           capture_output=True, text=True, timeout=5)
+        return bool(re.search(r'\b(?:tun|wg|ppp|utun)\d+', r.stdout or ""))
+    except Exception:
+        return False
+
+
+def _detect_system_proxy(url: Optional[str] = None) -> Optional[str]:
+    """Определяет, через что РЕАЛЬНО пойдёт трафик нашего процесса.
+    1. env-прокси (HTTP(S)_PROXY / ALL_PROXY) → строка прокси.
+    2. `ip route get <host|1.1.1.1>` — маршрут реального трафика нашего процесса с учётом
+       policy-таблиц Android (per-uid). dev НЕ из физических → "__vpn__"; физический → None.
+    3. fallback: интерфейс tun/wg/ppp/utun существует по имени → "__vpn__".
+    Возвращает: строку прокси | "__vpn__" | None."""
+    import shutil
+
+    # 1. env-прокси
     for var in ["HTTPS_PROXY", "HTTP_PROXY", "https_proxy", "http_proxy", "ALL_PROXY", "all_proxy"]:
         val = os.environ.get(var)
         if val:
             return val
 
-    # Проверяем наличие tun0 (VPN-интерфейс)
+    ip_bin = shutil.which("ip")
+    if not ip_bin:
+        log("VPN-детект: команда 'ip' не найдена (в Termux: pkg install iproute2)", "warning")
+        return None
+
+    # 2. Основной метод: РЕАЛЬНЫЙ маршрут нашего трафика (учитывает split-туннель и policy-таблицы)
+    target = "1.1.1.1"
+    if url:
+        try:
+            host = urllib.parse.urlparse(url).hostname
+            if host:
+                target = host
+        except Exception:
+            pass
+
+    PHYS_PREFIXES = ("wlan", "rmnet", "ccmni", "eth", "rndis", "lo", "dummy")
     try:
-        r = subprocess.run(["ip", "route"], capture_output=True, text=True, timeout=5)
-        if "tun0" in r.stdout or "tun1" in r.stdout:
-            return "__vpn__"  # VPN есть, curl пойдёт через него напрямую
-    except Exception:
-        pass
+        r = subprocess.run([ip_bin, "route", "get", target],
+                           capture_output=True, text=True, timeout=5)
+        toks = (r.stdout or "").split()
+        if "dev" in toks:
+            i = toks.index("dev")
+            if i + 1 < len(toks):
+                dev = toks[i + 1]
+                log(f"VPN-детект: трафик к {target} идёт через {dev}")
+                if dev.startswith(PHYS_PREFIXES):
+                    return None                    # трафик идёт мимо VPN → физический интерфейс
+                return "__vpn__"                   # не-физический = туннель (name-agnostic)
+        # dev не распознали → пробуем fallback ниже
+    except subprocess.TimeoutExpired:
+        log("VPN-детект: 'ip route get' — таймаут", "warning")
+    except Exception as e:
+        log(f"VPN-детект: 'ip route get' не сработал: {e}", "warning")
+
+    # 3. Fallback: интерфейс есть по имени (наличие ≠ наш трафик через него, но лучше чем ничего)
+    if _vpn_iface_exists():
+        return "__vpn__"
 
     return None
 
@@ -1328,7 +1381,7 @@ def _fetch_url_cascade(url: str, exclude_source: Optional[str] = None,
         msg("OK напрямую")
         return content
 
-    sys_proxy = _detect_system_proxy()
+    sys_proxy = _detect_system_proxy(url)
     if sys_proxy == "__vpn__":
         msg("Пробую через системный VPN (tun0)...")
         content = _fetch_curl(url, proxy=None, timeout=20)
@@ -1368,6 +1421,9 @@ def _fetch_url_cascade(url: str, exclude_source: Optional[str] = None,
             return content
 
     msg("Все варианты исчерпаны")
+    if sys_proxy != "__vpn__" and _vpn_iface_exists():
+        msg("⚠ Системный VPN активен, но трафик приложения идёт мимо него. "
+            "Проверьте, включён ли Termux/XrayProxy в split-туннель вашего VPN.")
     return None
 
 def fetch_subscription(url: str, exclude_source: Optional[str] = None,
