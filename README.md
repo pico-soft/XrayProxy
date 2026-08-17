@@ -265,6 +265,19 @@ unzip -o xrayproxy.zip
 bash xrayproxy/install.sh
 ```
 
+### Удаление из автозагрузки
+
+```bash
+mkdir -p ~/.termux/boot-disabled
+mv ~/.termux/boot/xrayproxy ~/.termux/boot-disabled/
+ls -la ~/.termux/boot/ ~/.termux/boot-disabled/
+
+cat > ~/.termux/boot-disabled/README.txt <<'EOF'
+Автозапуск XrayProxy отключён: перенесён сюда из ~/.termux/boot/
+Вернуть: mv ~/.termux/boot-disabled/xrayproxy ~/.termux/boot/ && chmod +x ~/.termux/boot/xrayproxy
+EOF
+```
+
 ## Лицензия
 
 GPL v3
